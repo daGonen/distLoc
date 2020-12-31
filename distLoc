@@ -1,0 +1,222 @@
+import maya.api.OpenMaya as om
+import maya.api.OpenMayaRender as omr
+import maya.api.OpenMayaUI as omui
+import pymel.core as pm
+import maya.cmds as cmds
+
+
+def maya_useNewAPI():
+    """
+    The presence of this function tells Maya that the plugin produces, and
+    expects to be passed, objects created using the Maya Python API 2.0.
+    """
+    pass
+
+
+class ColourDistIndicator(omui.MPxLocatorNode):
+
+    TYPE_NAME = "distLocator"
+    TYPE_ID = om.MTypeId(0x0007F7F7)
+    DRAW_CLASSIFICATION = "drawdb/geometry/helloworld"
+    DRAW_REGISTRANT_ID = "ColourDistIndicator"
+
+    color_obj = None
+    value_obj = None
+    oldMin_obj = None
+    oldMax_obj = None
+    newValue_obj = None
+
+
+    def __init__(self):
+        super(ColourDistIndicator, self).__init__()
+
+    def compute(self, plug, data):
+        #if plug == ColourDistIndicator.color_obj:
+
+        colour = data.inputValue(ColourDistIndicator.color_obj).asFloat3()
+        value = data.inputValue(ColourDistIndicator.value_obj).asFloat()
+        oldMin = data.inputValue(ColourDistIndicator.oldMin_obj).asFloat()
+        oldMax = data.inputValue(ColourDistIndicator.oldMax_obj).asFloat()
+
+        newMin = 0
+        newMax = 1
+        newRange = (newMax - newMin)
+        oldRange = (oldMax - oldMin)
+        newVal = (((value - oldMin) * newRange) / float(oldRange)) + newMin
+        if value < 10:
+            newVal = 0.0
+        if value > 13:
+            newVal = 1.0
+        #print newVal
+
+        newValue = data.outputValue(ColourDistIndicator.newValue_obj)
+        newValue.setFloat(newVal)
+            
+        data.setClean(plug)
+        
+            
+            
+    @classmethod
+    def creator(cls):
+        return ColourDistIndicator()
+
+    @classmethod
+    def initialize(cls):
+        numeric_attr = om.MFnNumericAttribute()
+
+        cls.color_obj = numeric_attr.create("color", "col", om.MFnNumericData.k3Float)
+        numeric_attr.keyable = True
+        numeric_attr.readable = True
+        
+        cls.value_obj = numeric_attr.create("value", "val", om.MFnNumericData.kFloat, 0.0)
+        numeric_attr.keyable = True
+        numeric_attr.readable = False
+
+        cls.oldMin_obj = numeric_attr.create("oldMin", "omin", om.MFnNumericData.kFloat, 0.0)
+        numeric_attr.keyable = True
+        numeric_attr.readable = False
+
+        cls.oldMax_obj = numeric_attr.create("oldMax", "omax", om.MFnNumericData.kFloat, 0.0)
+        numeric_attr.keyable = True
+        numeric_attr.readable = False
+
+        cls.newValue_obj = numeric_attr.create("newValue", "nuval", om.MFnNumericData.kFloat, 0.0)
+        numeric_attr.writable = False
+        
+        cls.addAttribute(cls.color_obj)
+        cls.addAttribute(cls.value_obj)
+        cls.addAttribute(cls.oldMin_obj)
+        cls.addAttribute(cls.oldMax_obj)
+        cls.addAttribute(cls.newValue_obj)
+
+        cls.attributeAffects(cls.oldMin_obj, cls.newValue_obj)
+        cls.attributeAffects(cls.oldMax_obj, cls.newValue_obj)
+        cls.attributeAffects(cls.value_obj, cls.newValue_obj)
+
+
+class DistLocatorDrawOverride(omr.MPxDrawOverride):
+
+    NAME = "DistLocatorDrawOverride"
+
+
+    def __init__(self, obj):
+        super(DistLocatorDrawOverride, self).__init__(obj, None, False)
+
+    def prepareForDraw(self, obj_path, camera_path, frame_context, old_data):
+        dep = om.MFnDependencyNode(obj_path.node())
+        #attr = dep.findPlug("color", False)
+        
+        color0 = dep.findPlug("color0", False)
+        color1 = dep.findPlug("color1", False)
+        color2 = dep.findPlug("color2", False)
+        
+        self.c0 = color0.asFloat()
+        self.c1 = color1.asFloat()
+        self.c2 = color2.asFloat()
+        print [self.c0, self.c1, self.c2]
+        
+        value = dep.findPlug("value", False)
+        
+        self.val = format(value.asFloat(), ".3f")
+        print self.val
+
+    def supportedDrawAPIs(self):
+        return (omr.MRenderer.kAllDevices)
+
+    def hasUIDrawables(self):
+        return True
+
+    def addUIDrawables(self, obj_path, draw_manager, frame_context, data):
+        clr = om.MColor((self.c0, self.c1, self.c2, 1.0))
+        draw_manager.beginDrawable()
+        draw_manager.setColor(clr)
+        draw_manager.text(om.MPoint(0, 0, 4), str(self.val))
+
+        draw_manager.endDrawable()
+
+    @classmethod
+    def creator(cls, obj):
+        return DistLocatorDrawOverride(obj)
+
+
+def initializePlugin(plugin):
+
+    vendor = "Daniel Gonen"
+    version = "1.0.0"
+    api_version = "Any"
+
+    plugin_fn = om.MFnPlugin(plugin, vendor, version, api_version)
+    try:
+        plugin_fn.registerNode(ColourDistIndicator.TYPE_NAME,              # name of the node
+                               ColourDistIndicator.TYPE_ID,                # unique id that identifies node
+                               ColourDistIndicator.creator,                # function/method that returns new instance of class
+                               ColourDistIndicator.initialize,             # function/method that will initialize all attributes of node
+                               om.MPxNode.kLocatorNode,                    # type of node to be registered
+                               ColourDistIndicator.DRAW_CLASSIFICATION)    # draw-specific classification string (VP2.0)
+    except:
+        om.MGlobal.displayError("Failed to register node: {0}".format(ColourDistIndicator.TYPE_NAME))
+
+    try:
+        omr.MDrawRegistry.registerDrawOverrideCreator(ColourDistIndicator.DRAW_CLASSIFICATION,     # draw-specific classification
+                                                      ColourDistIndicator.DRAW_REGISTRANT_ID,      # unique name to identify registration
+                                                      DistLocatorDrawOverride.creator)         # function/method that returns new instance of class
+    except:
+        om.MGlobal.displayError("Failed to register draw override: {0}".format(DistLocatorDrawOverride.NAME))
+
+
+def uninitializePlugin(plugin):
+
+    plugin_fn = om.MFnPlugin(plugin)
+    try:
+        omr.MDrawRegistry.deregisterDrawOverrideCreator(ColourDistIndicator.DRAW_CLASSIFICATION, ColourDistIndicator.DRAW_REGISTRANT_ID)
+    except:
+        om.MGlobal.displayError("Failed to deregister draw override: {0}".format(DistLocatorDrawOverride.NAME))
+
+    try:
+        plugin_fn.deregisterNode(ColourDistIndicator.TYPE_ID)
+    except:
+        om.MGlobal.displayError("Failed to unregister node: {0}".format(ColourDistIndicator.TYPE_NAME))
+
+
+if __name__ == "__main__":
+
+    cmds.file(new=True, force=True)
+
+    plugin_name = "distLoc.py"
+
+    cmds.evalDeferred('if cmds.pluginInfo("{0}", q=True, loaded=True): cmds.unloadPlugin("{0}")'.format(plugin_name))
+    cmds.evalDeferred('if not cmds.pluginInfo("{0}", q=True, loaded=True): cmds.loadPlugin("{0}")'.format(plugin_name))
+    
+    circ1 = pm.circle(r=.5)
+    circ2 = pm.circle(r=.5)
+    circ2[0].ty.set(5)
+    #LOCK AND HIDE ATTRS
+    for circ in [circ1[0], circ2[0]]:
+        for trns in 'trs':
+            for i in 'xyz':
+                if trns == 't' and i == 'y':
+                    pass
+                else:
+                    pm.setAttr(circ+'.{0}{1}'.format(trns, i), l=1, k=0, cb=0)
+                
+    dist = pm.shadingNode('distanceBetween', asUtility=1)
+    circ1[0].t >> dist.p1
+    circ2[0].t >> dist.p2 
+
+    distLoc = pm.createNode("distLocator")
+    
+    dist.d >> distLoc.val
+    distLoc.omin.set(10)
+    distLoc.omax.set(15)
+    
+    ramp = pm.shadingNode("ramp", asUtility=1)
+    ramp.colorEntryList[0].color.set([0,0,1])
+    ramp.colorEntryList[1].color.set([1,0,0])
+    ramp.colorEntryList[1].position.set(1)
+    ramp.colorEntryList[2].color.set([0,1,0])
+    ramp.colorEntryList[2].position.set(.333)
+    ramp.colorEntryList[3].color.set([1,1,0])
+    ramp.colorEntryList[3].position.set(.666)
+    
+    distLoc.nuval >> ramp.uvCoord.vCoord
+    ramp.oc >> distLoc.color
