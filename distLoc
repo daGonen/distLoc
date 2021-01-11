@@ -15,47 +15,40 @@ def maya_useNewAPI():
 
 class ColourDistIndicator(omui.MPxLocatorNode):
 
-    TYPE_NAME = "distLocator"
+    TYPE_NAME = "dist"
     TYPE_ID = om.MTypeId(0x0007F7F7)
-    DRAW_CLASSIFICATION = "drawdb/geometry/helloworld"
+    DRAW_CLASSIFICATION = "drawdb/geometry/ColourDistIndicator"
     DRAW_REGISTRANT_ID = "ColourDistIndicator"
 
-    color_obj = None
-    value_obj = None
-    oldMin_obj = None
-    oldMax_obj = None
-    newValue_obj = None
+    point1_obj = None
+    point2_obj = None
+
+    distance_obj = None
+    rampColour_obj = None
 
 
     def __init__(self):
         super(ColourDistIndicator, self).__init__()
 
+    def postConstructor(self):
+        print("postConstructor")
+        color_ramp_attribute = om.MRampAttribute(self.thisMObject(), self.rampColour_obj)
+        positions = [0.0, 0.333, 0.666, 1.0]
+        colors = [om.MColor([0, 0, 1]), om.MColor([0, 1, 0]), om.MColor([1, 1, 0]), om.MColor([1, 0, 0])]
+        interps = [om.MRampAttribute.kLinear, om.MRampAttribute.kLinear, om.MRampAttribute.kLinear, om.MRampAttribute.kLinear]
+        color_ramp_attribute.addEntries(positions, colors, interps)
+
     def compute(self, plug, data):
         #if plug == ColourDistIndicator.color_obj:
+        point1 = om.MPoint(data.inputValue(self.point1_obj).asFloatVector())
+        point2 = om.MPoint(data.inputValue(self.point2_obj).asFloatVector())
 
-        colour = data.inputValue(ColourDistIndicator.color_obj).asFloat3()
-        value = data.inputValue(ColourDistIndicator.value_obj).asFloat()
-        oldMin = data.inputValue(ColourDistIndicator.oldMin_obj).asFloat()
-        oldMax = data.inputValue(ColourDistIndicator.oldMax_obj).asFloat()
+        distance = point1.distanceTo(point2)
+        data.outputValue(self.distance_obj).setDouble(distance)
 
-        newMin = 0
-        newMax = 1
-        newRange = (newMax - newMin)
-        oldRange = (oldMax - oldMin)
-        newVal = (((value - oldMin) * newRange) / float(oldRange)) + newMin
-        if value < 10:
-            newVal = 0.0
-        if value > 13:
-            newVal = 1.0
-        #print newVal
-
-        newValue = data.outputValue(ColourDistIndicator.newValue_obj)
-        newValue.setFloat(newVal)
-            
         data.setClean(plug)
-        
-            
-            
+
+ 
     @classmethod
     def creator(cls):
         return ColourDistIndicator()
@@ -64,35 +57,27 @@ class ColourDistIndicator(omui.MPxLocatorNode):
     def initialize(cls):
         numeric_attr = om.MFnNumericAttribute()
 
-        cls.color_obj = numeric_attr.create("color", "col", om.MFnNumericData.k3Float)
+        cls.point1_obj = numeric_attr.createPoint("point1", "p1")
+        numeric_attr.readable = False
         numeric_attr.keyable = True
-        numeric_attr.readable = True
+
+        cls.point2_obj = numeric_attr.createPoint("point2", "p2")
+        numeric_attr.readable = False
+        numeric_attr.keyable = True
         
-        cls.value_obj = numeric_attr.create("value", "val", om.MFnNumericData.kFloat, 0.0)
-        numeric_attr.keyable = True
-        numeric_attr.readable = False
-
-        cls.oldMin_obj = numeric_attr.create("oldMin", "omin", om.MFnNumericData.kFloat, 0.0)
-        numeric_attr.keyable = True
-        numeric_attr.readable = False
-
-        cls.oldMax_obj = numeric_attr.create("oldMax", "omax", om.MFnNumericData.kFloat, 0.0)
-        numeric_attr.keyable = True
-        numeric_attr.readable = False
-
-        cls.newValue_obj = numeric_attr.create("newValue", "nuval", om.MFnNumericData.kFloat, 0.0)
+        cls.distance_obj = numeric_attr.create("distance", "dist", om.MFnNumericData.kDouble, 0.0)
         numeric_attr.writable = False
+
+        cls.rampColour_obj = om.MRampAttribute.createColorRamp("colorRamp", "col", )
         
-        cls.addAttribute(cls.color_obj)
-        cls.addAttribute(cls.value_obj)
-        cls.addAttribute(cls.oldMin_obj)
-        cls.addAttribute(cls.oldMax_obj)
-        cls.addAttribute(cls.newValue_obj)
+        cls.addAttribute(cls.point1_obj)
+        cls.addAttribute(cls.point2_obj)
+        cls.addAttribute(cls.rampColour_obj)
+        cls.addAttribute(cls.distance_obj)
 
-        cls.attributeAffects(cls.oldMin_obj, cls.newValue_obj)
-        cls.attributeAffects(cls.oldMax_obj, cls.newValue_obj)
-        cls.attributeAffects(cls.value_obj, cls.newValue_obj)
-
+        cls.attributeAffects(cls.point1_obj, cls.distance_obj)
+        cls.attributeAffects(cls.point2_obj, cls.distance_obj)
+        cls.attributeAffects(cls.rampColour_obj, cls.distance_obj)
 
 class DistLocatorDrawOverride(omr.MPxDrawOverride):
 
@@ -103,22 +88,15 @@ class DistLocatorDrawOverride(omr.MPxDrawOverride):
         super(DistLocatorDrawOverride, self).__init__(obj, None, False)
 
     def prepareForDraw(self, obj_path, camera_path, frame_context, old_data):
-        dep = om.MFnDependencyNode(obj_path.node())
-        #attr = dep.findPlug("color", False)
-        
-        color0 = dep.findPlug("color0", False)
-        color1 = dep.findPlug("color1", False)
-        color2 = dep.findPlug("color2", False)
-        
-        self.c0 = color0.asFloat()
-        self.c1 = color1.asFloat()
-        self.c2 = color2.asFloat()
-        print [self.c0, self.c1, self.c2]
-        
-        value = dep.findPlug("value", False)
-        
-        self.val = format(value.asFloat(), ".3f")
-        print self.val
+        node_fn = om.MFnDependencyNode(obj_path.node())
+        self.distance = node_fn.findPlug("distance", False).asDouble()
+
+        ramp_position = self.distance / 10
+        #ramp_position = min(max(0.0, ramp_position), 100)
+        print ramp_position
+        color_ramp_plug = node_fn.findPlug("colorRamp", False)
+        color_ramp_attribute = om.MRampAttribute(color_ramp_plug)
+        self.color = color_ramp_attribute.getValueAtPosition(ramp_position)
 
     def supportedDrawAPIs(self):
         return (omr.MRenderer.kAllDevices)
@@ -127,10 +105,9 @@ class DistLocatorDrawOverride(omr.MPxDrawOverride):
         return True
 
     def addUIDrawables(self, obj_path, draw_manager, frame_context, data):
-        clr = om.MColor((self.c0, self.c1, self.c2, 1.0))
         draw_manager.beginDrawable()
-        draw_manager.setColor(clr)
-        draw_manager.text(om.MPoint(0, 0, 4), str(self.val))
+        draw_manager.setColor(self.color)
+        draw_manager.text(om.MPoint(0, 0, 4), str(self.distance))
 
         draw_manager.endDrawable()
 
@@ -182,41 +159,16 @@ if __name__ == "__main__":
 
     cmds.file(new=True, force=True)
 
-    plugin_name = "distLoc.py"
+    plugin_name = "distLocator.py"
 
     cmds.evalDeferred('if cmds.pluginInfo("{0}", q=True, loaded=True): cmds.unloadPlugin("{0}")'.format(plugin_name))
     cmds.evalDeferred('if not cmds.pluginInfo("{0}", q=True, loaded=True): cmds.loadPlugin("{0}")'.format(plugin_name))
-    
-    circ1 = pm.circle(r=.5)
-    circ2 = pm.circle(r=.5)
-    circ2[0].ty.set(5)
-    #LOCK AND HIDE ATTRS
-    for circ in [circ1[0], circ2[0]]:
-        for trns in 'trs':
-            for i in 'xyz':
-                if trns == 't' and i == 'y':
-                    pass
-                else:
-                    pm.setAttr(circ+'.{0}{1}'.format(trns, i), l=1, k=0, cb=0)
-                
-    dist = pm.shadingNode('distanceBetween', asUtility=1)
-    circ1[0].t >> dist.p1
-    circ2[0].t >> dist.p2 
 
-    distLoc = pm.createNode("distLocator")
+
+    dist = pm.createNode("dist")
     
-    dist.d >> distLoc.val
-    distLoc.omin.set(10)
-    distLoc.omax.set(15)
-    
-    ramp = pm.shadingNode("ramp", asUtility=1)
-    ramp.colorEntryList[0].color.set([0,0,1])
-    ramp.colorEntryList[1].color.set([1,0,0])
-    ramp.colorEntryList[1].position.set(1)
-    ramp.colorEntryList[2].color.set([0,1,0])
-    ramp.colorEntryList[2].position.set(.333)
-    ramp.colorEntryList[3].color.set([1,1,0])
-    ramp.colorEntryList[3].position.set(.666)
-    
-    distLoc.nuval >> ramp.uvCoord.vCoord
-    ramp.oc >> distLoc.color
+    box1 = pm.polyCube()
+    box2 = pm.polyCube()
+    print dist
+    pm.connectAttr(box1[0].t, dist.p1)
+    pm.connectAttr(box2[0].t, dist.p2)
