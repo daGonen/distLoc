@@ -1,0 +1,81 @@
+import maya.api.OpenMaya as om
+import pymel.core as pm
+import maya.cmds as cmds
+
+
+def maya_useNewAPI():
+    """
+    The presence of this function tells Maya that the plugin produces, and
+    expects to be passed, objects created using the Maya Python API 2.0.
+    """
+    pass
+
+
+
+class visualizeDistanceCmd(om.MPxCommand):
+
+    COMMAND_NAME = "visDistance"
+
+    PARENT_FLAG = ["-s", "-source", (om.MSyntax.kString)]
+    CHILD_FLAG = ["-d", "-destination", (om.MSyntax.kString)]
+    FACTOR_FLAG = ["-f", "-factor", (om.MSyntax.kDouble)]
+
+
+    def __init__(self):
+        super(visualizeDistanceCmd, self).__init__()
+
+    def doIt(self, args):
+        arg_db = om.MArgDatabase(self.syntax(), args)
+        
+        obj1 = pm.PyNode(arg_db.flagArgumentString(visualizeDistanceCmd.PARENT_FLAG[0], 0))
+        obj2 = pm.PyNode(arg_db.flagArgumentString(visualizeDistanceCmd.CHILD_FLAG[0], 0))
+        factor = arg_db.flagArgumentDouble(visualizeDistanceCmd.FACTOR_FLAG[0], 0)
+        
+        if not cmds.pluginInfo("{0}".format('distLocator.py'), q=True, loaded=True):
+            om.MGlobal.displayError("distLocator is not loaded! Please load distLocator plug-in through Plug-in Manager")
+        else:
+            dist = pm.createNode("dist")
+            pm.connectAttr(obj1.t, dist.p1)
+            pm.connectAttr(obj2.t, dist.p2)
+            dist.fac.set(factor)
+            pm.parentConstraint(obj1, dist.getParent())
+
+    @classmethod
+    def creator(cls):
+        return visualizeDistanceCmd()
+
+    @classmethod
+    def create_syntax(cls):
+        syntax = om.MSyntax()
+
+        syntax.addFlag(*cls.PARENT_FLAG)
+        syntax.addFlag(*cls.CHILD_FLAG)
+        syntax.addFlag(*cls.FACTOR_FLAG)
+
+        syntax.setObjectType(om.MSyntax.kSelectionList, 1, 1)
+        syntax.useSelectionAsDefault(True)
+
+        return syntax
+        
+        
+def initializePlugin(plugin):
+    """
+    """
+    vendor = "Daniel Gonen"
+    version = "1.0.0"
+
+    plugin_fn = om.MFnPlugin(plugin, vendor, version)
+    try:
+        plugin_fn.registerCommand(visualizeDistanceCmd.COMMAND_NAME, visualizeDistanceCmd.creator, visualizeDistanceCmd.create_syntax)
+    except:
+        om.MGlobal.displayError("Failed to register command: {0}".format(visualizeDistanceCmd.COMMAND_NAME))
+
+
+def uninitializePlugin(plugin):
+    """
+    """
+    plugin_fn = om.MFnPlugin(plugin)
+    try:
+        plugin_fn.deregisterCommand(visualizeDistanceCmd.COMMAND_NAME)
+    except:
+        om.MGlobal.displayError("Failed to deregister command: {0}".format(visualizeDistanceCmd.COMMAND_NAME))
