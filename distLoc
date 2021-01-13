@@ -23,6 +23,8 @@ class ColourDistIndicator(omui.MPxLocatorNode):
     point1_obj = None
     point2_obj = None
 
+    factor_obj = None
+
     distance_obj = None
     rampColour_obj = None
 
@@ -39,9 +41,10 @@ class ColourDistIndicator(omui.MPxLocatorNode):
         color_ramp_attribute.addEntries(positions, colors, interps)
 
     def compute(self, plug, data):
-        #if plug == ColourDistIndicator.color_obj:
         point1 = om.MPoint(data.inputValue(self.point1_obj).asFloatVector())
         point2 = om.MPoint(data.inputValue(self.point2_obj).asFloatVector())
+
+        factor = data.inputValue(ColourDistIndicator.factor_obj).asFloat()
 
         distance = point1.distanceTo(point2)
         data.outputValue(self.distance_obj).setDouble(distance)
@@ -64,6 +67,10 @@ class ColourDistIndicator(omui.MPxLocatorNode):
         cls.point2_obj = numeric_attr.createPoint("point2", "p2")
         numeric_attr.readable = False
         numeric_attr.keyable = True
+
+        cls.factor_obj = numeric_attr.create("factor", "fac", om.MFnNumericData.kFloat, 10.0)
+        numeric_attr.readable = False
+        numeric_attr.keyable = True
         
         cls.distance_obj = numeric_attr.create("distance", "dist", om.MFnNumericData.kDouble, 0.0)
         numeric_attr.writable = False
@@ -72,6 +79,7 @@ class ColourDistIndicator(omui.MPxLocatorNode):
         
         cls.addAttribute(cls.point1_obj)
         cls.addAttribute(cls.point2_obj)
+        cls.addAttribute(cls.factor_obj)
         cls.addAttribute(cls.rampColour_obj)
         cls.addAttribute(cls.distance_obj)
 
@@ -83,17 +91,15 @@ class DistLocatorDrawOverride(omr.MPxDrawOverride):
 
     NAME = "DistLocatorDrawOverride"
 
-
     def __init__(self, obj):
         super(DistLocatorDrawOverride, self).__init__(obj, None, False)
 
     def prepareForDraw(self, obj_path, camera_path, frame_context, old_data):
         node_fn = om.MFnDependencyNode(obj_path.node())
         self.distance = node_fn.findPlug("distance", False).asDouble()
+        factor = node_fn.findPlug("factor", False).asFloat()
 
-        ramp_position = self.distance / 10
-        #ramp_position = min(max(0.0, ramp_position), 100)
-        print ramp_position
+        ramp_position = self.distance / factor
         color_ramp_plug = node_fn.findPlug("colorRamp", False)
         color_ramp_attribute = om.MRampAttribute(color_ramp_plug)
         self.color = color_ramp_attribute.getValueAtPosition(ramp_position)
@@ -107,7 +113,7 @@ class DistLocatorDrawOverride(omr.MPxDrawOverride):
     def addUIDrawables(self, obj_path, draw_manager, frame_context, data):
         draw_manager.beginDrawable()
         draw_manager.setColor(self.color)
-        draw_manager.text(om.MPoint(0, 0, 4), str(self.distance))
+        draw_manager.text(om.MPoint(0, 0, 0), str(format(self.distance, '.3f')))
 
         draw_manager.endDrawable()
 
@@ -153,22 +159,3 @@ def uninitializePlugin(plugin):
         plugin_fn.deregisterNode(ColourDistIndicator.TYPE_ID)
     except:
         om.MGlobal.displayError("Failed to unregister node: {0}".format(ColourDistIndicator.TYPE_NAME))
-
-
-if __name__ == "__main__":
-
-    cmds.file(new=True, force=True)
-
-    plugin_name = "distLocator.py"
-
-    cmds.evalDeferred('if cmds.pluginInfo("{0}", q=True, loaded=True): cmds.unloadPlugin("{0}")'.format(plugin_name))
-    cmds.evalDeferred('if not cmds.pluginInfo("{0}", q=True, loaded=True): cmds.loadPlugin("{0}")'.format(plugin_name))
-
-
-    dist = pm.createNode("dist")
-    
-    box1 = pm.polyCube()
-    box2 = pm.polyCube()
-    print dist
-    pm.connectAttr(box1[0].t, dist.p1)
-    pm.connectAttr(box2[0].t, dist.p2)
